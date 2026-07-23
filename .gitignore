@@ -1,1 +1,18 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
 
+# Xcode (in case you ever add a .xcodeproj alongside)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
