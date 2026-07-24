@@ -3,7 +3,7 @@ Vellum is a lightweight (macOS) quick-note capture utility. Global hotkey trigge
 
 ## Status
 
-🚧 **Work in progress.** Core functionality is still being built. This README will be updated with full usage instructions, screenshots, and setup steps once the app is stable.
+**Work in progress.** Core functionality is still being built. This README will be updated with full usage instructions, screenshots, and setup steps once the app is stable.
 
 ## What it does
 
