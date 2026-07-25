@@ -10,7 +10,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Vellum",
-            dependencies: ["HotKey"]
+            dependencies: ["HotKey"],
+            resources: [.copy("Resources/menubar-icon.png")]
         )
     ]
 )

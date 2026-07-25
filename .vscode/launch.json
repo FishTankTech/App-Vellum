@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "name": "Debug Vellum",
+            "cwd": "${workspaceFolder:App-Vellum}",
+            "preLaunchTask": "swift: Build Debug Vellum",
+            "target": "Vellum",
+            "configuration": "debug"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:App-Vellum}",
+            "name": "Release Vellum",
+            "target": "Vellum",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Vellum"
+        }
+    ]
+}
