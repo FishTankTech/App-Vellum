@@ -14,9 +14,13 @@ Vellum is a lightweight (macOS) quick-note capture utility. A global hotkey open
 
 * Global hotkey opens a floating note window
 * Save notes instantly as you type
+* Can create instant "scratch paper" to use and never see again
+* Inline math processer (I.e. *"340 + 89 * 1.07"* will append *"340 + 89 * 1.07 = 458.23"* after a short pause.)
 * No save step, no app switching
+* Automatic tag usage (I.e. ***"//AM"*** will divert said note into "ActivismMotorsports.md")
 * Fast, lightweight native macOS interface
-* Minimal UI, minimal overhead
+* Quality (Changable) timeline digest with data about your usage.
+* Minimal UI, minimal overhead, and minimal size.
 
 ## Installation // Usage
 
