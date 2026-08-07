@@ -1,3 +1,5 @@
+// PreferencesWindowController.swift
+
 import Cocoa
 
 private enum KeyCodeMap {
@@ -71,13 +73,30 @@ class HotKeyRecorderControl: NSButton {
     }
 }
 
+/// One row of the Tag Routing table.
+private struct TagRouteEntry {
+    var tag: String
+    var filename: String
+}
+
 class PreferencesWindowController: NSWindowController {
     private let hotKeyRecorder = HotKeyRecorderControl()
     private let storagePathLabel = NSTextField(labelWithString: "")
 
+    private let inlineMathCheckbox = NSButton(checkboxWithTitle: "Show inline math results", target: nil, action: nil)
+    private let mathDelaySlider = NSSlider()
+    private let mathDelayValueLabel = NSTextField(labelWithString: "")
+
+    private let tagRoutesTableView = NSTableView()
+    private let tagRoutesAddRemoveControl = NSSegmentedControl()
+    private var tagRouteEntries: [TagRouteEntry] = []
+
+    private let saveSoundCheckbox = NSButton(checkboxWithTitle: "Play sound on save", target: nil, action: nil)
+    private let saveHapticCheckbox = NSButton(checkboxWithTitle: "Trackpad haptic on save", target: nil, action: nil)
+
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 160),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -107,10 +126,44 @@ class PreferencesWindowController: NSWindowController {
         storageStack.orientation = .horizontal
         storageStack.spacing = 8
 
-        let mainStack = NSStackView(views: [hotKeyStack, storageStack])
+        // Inline math section
+        inlineMathCheckbox.target = self
+        inlineMathCheckbox.action = #selector(toggleInlineMath)
+        inlineMathCheckbox.state = PreferencesManager.shared.inlineMathEnabled ? .on : .off
+
+        let delayLabel = NSTextField(labelWithString: "Pause before showing result:")
+
+        mathDelaySlider.minValue = PreferencesManager.mathPreviewDelayRange.lowerBound
+        mathDelaySlider.maxValue = PreferencesManager.mathPreviewDelayRange.upperBound
+        mathDelaySlider.doubleValue = PreferencesManager.shared.mathPreviewDelay
+        mathDelaySlider.target = self
+        mathDelaySlider.action = #selector(changeMathDelay)
+        mathDelaySlider.isContinuous = true
+        mathDelaySlider.widthAnchor.constraint(equalToConstant: 160).isActive = true
+
+        mathDelayValueLabel.stringValue = Self.delayString(PreferencesManager.shared.mathPreviewDelay)
+        mathDelayValueLabel.textColor = .secondaryLabelColor
+        mathDelayValueLabel.widthAnchor.constraint(equalToConstant: 40).isActive = true
+
+        let delayStack = NSStackView(views: [delayLabel, mathDelaySlider, mathDelayValueLabel])
+        delayStack.orientation = .horizontal
+        delayStack.spacing = 8
+
+        let mathStack = NSStackView(views: [inlineMathCheckbox, delayStack])
+        mathStack.orientation = .vertical
+        mathStack.alignment = .leading
+        mathStack.spacing = 8
+
+        let mainStack = NSStackView(views: [
+            hotKeyStack,
+            storageStack,
+            mathStack,
+            setupTagRoutesSection(),
+            setupSaveConfirmationSection()
+        ])
         mainStack.orientation = .vertical
         mainStack.alignment = .leading
-        mainStack.spacing = 16
+        mainStack.spacing = 20
         mainStack.translatesAutoresizingMaskIntoConstraints = false
 
         contentView.addSubview(mainStack)
@@ -119,6 +172,126 @@ class PreferencesWindowController: NSWindowController {
             mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             mainStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 24)
         ])
+    }
+
+    // MARK: - Tag Routing
+
+    private func setupTagRoutesSection() -> NSView {
+
+        tagRouteEntries = PreferencesManager.shared.tagRoutes
+            .sorted { $0.key < $1.key }
+            .map { TagRouteEntry(tag: $0.key, filename: $0.value) }
+
+        let label = NSTextField(labelWithString: "Tag Routing:")
+
+        let tagColumn = NSTableColumn(identifier: .init("tag"))
+        tagColumn.title = "Tag"
+        tagColumn.width = 70
+
+        let fileColumn = NSTableColumn(identifier: .init("file"))
+        fileColumn.title = "File"
+        fileColumn.width = 220
+
+        tagRoutesTableView.addTableColumn(tagColumn)
+        tagRoutesTableView.addTableColumn(fileColumn)
+        tagRoutesTableView.dataSource = self
+        tagRoutesTableView.delegate = self
+        tagRoutesTableView.usesAlternatingRowBackgroundColors = true
+        tagRoutesTableView.rowHeight = 20
+        tagRoutesTableView.headerView = NSTableHeaderView()
+
+        let scrollView = NSScrollView()
+        scrollView.documentView = tagRoutesTableView
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        scrollView.heightAnchor.constraint(equalToConstant: 110).isActive = true
+
+        tagRoutesAddRemoveControl.segmentCount = 2
+        tagRoutesAddRemoveControl.setLabel("+", forSegment: 0)
+        tagRoutesAddRemoveControl.setLabel("–", forSegment: 1)
+        tagRoutesAddRemoveControl.trackingMode = .momentary
+        tagRoutesAddRemoveControl.target = self
+        tagRoutesAddRemoveControl.action = #selector(addOrRemoveTagRoute(_:))
+        tagRoutesAddRemoveControl.setWidth(30, forSegment: 0)
+        tagRoutesAddRemoveControl.setWidth(30, forSegment: 1)
+
+        let hint = NSTextField(labelWithString: "Double-click a cell to rename.")
+        hint.font = NSFont.systemFont(ofSize: 10)
+        hint.textColor = .tertiaryLabelColor
+
+        let stack = NSStackView(views: [label, scrollView, tagRoutesAddRemoveControl, hint])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+
+        return stack
+    }
+
+    @objc private func addOrRemoveTagRoute(_ sender: NSSegmentedControl) {
+
+        if sender.selectedSegment == 0 {
+            tagRouteEntries.append(TagRouteEntry(tag: "", filename: ""))
+            tagRoutesTableView.reloadData()
+
+            let newRow = tagRouteEntries.count - 1
+            tagRoutesTableView.scrollRowToVisible(newRow)
+            tagRoutesTableView.editColumn(0, row: newRow, with: nil, select: true)
+
+        } else {
+            let row = tagRoutesTableView.selectedRow
+            guard row >= 0, row < tagRouteEntries.count else { return }
+
+            tagRouteEntries.remove(at: row)
+            tagRoutesTableView.reloadData()
+            commitTagRoutes()
+        }
+    }
+
+    /// Rebuilds the persisted tag → filename dictionary from the current
+    /// table rows, skipping any incomplete rows.
+    private func commitTagRoutes() {
+        var routes: [String: String] = [:]
+
+        for entry in tagRouteEntries {
+            guard !entry.tag.isEmpty, !entry.filename.isEmpty else {
+                continue
+            }
+            routes[entry.tag] = entry.filename
+        }
+
+        PreferencesManager.shared.tagRoutes = routes
+    }
+
+    // MARK: - Save Confirmation
+
+    private func setupSaveConfirmationSection() -> NSView {
+
+        let label = NSTextField(labelWithString: "Save Confirmation:")
+
+        saveSoundCheckbox.target = self
+        saveSoundCheckbox.action = #selector(toggleSaveSound)
+        saveSoundCheckbox.state = PreferencesManager.shared.saveSoundEnabled ? .on : .off
+
+        saveHapticCheckbox.target = self
+        saveHapticCheckbox.action = #selector(toggleSaveHaptic)
+        saveHapticCheckbox.state = PreferencesManager.shared.saveHapticEnabled ? .on : .off
+
+        let stack = NSStackView(views: [label, saveSoundCheckbox, saveHapticCheckbox])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+
+        return stack
+    }
+
+    @objc private func toggleSaveSound() {
+        PreferencesManager.shared.saveSoundEnabled = saveSoundCheckbox.state == .on
+    }
+
+    @objc private func toggleSaveHaptic() {
+        PreferencesManager.shared.saveHapticEnabled = saveHapticCheckbox.state == .on
     }
 
     @objc private func chooseFolder() {
@@ -134,5 +307,75 @@ class PreferencesWindowController: NSWindowController {
             PreferencesManager.shared.storageFolder = url
             self?.storagePathLabel.stringValue = url.path
         }
+    }
+
+    @objc private func toggleInlineMath() {
+        PreferencesManager.shared.inlineMathEnabled = inlineMathCheckbox.state == .on
+    }
+
+    @objc private func changeMathDelay() {
+        PreferencesManager.shared.mathPreviewDelay = mathDelaySlider.doubleValue
+        mathDelayValueLabel.stringValue = Self.delayString(PreferencesManager.shared.mathPreviewDelay)
+    }
+
+    private static func delayString(_ value: Double) -> String {
+        String(format: "%.2fs", value)
+    }
+}
+
+extension PreferencesWindowController: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        tagRouteEntries.count
+    }
+}
+
+extension PreferencesWindowController: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard let identifier = tableColumn?.identifier else {
+            return nil
+        }
+
+        let entry = tagRouteEntries[row]
+
+        let field = NSTextField()
+        field.isBordered = false
+        field.drawsBackground = false
+        field.font = NSFont.systemFont(ofSize: 12)
+        field.delegate = self
+
+        if identifier.rawValue == "tag" {
+            field.stringValue = entry.tag
+        } else {
+            field.stringValue = entry.filename
+        }
+
+        return field
+    }
+}
+
+extension PreferencesWindowController: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else {
+            return
+        }
+
+        let row = tagRoutesTableView.row(for: field)
+        let column = tagRoutesTableView.column(for: field)
+
+        guard row >= 0, row < tagRouteEntries.count, column >= 0 else {
+            return
+        }
+
+        let value = field.stringValue.trimmingCharacters(in: .whitespaces)
+
+        if column == 0 {
+            tagRouteEntries[row].tag = value.lowercased()
+        } else {
+            // Keep destinations confined to the storage folder — strip
+            // any path components the user might type, per spec.
+            tagRouteEntries[row].filename = (value as NSString).lastPathComponent
+        }
+
+        commitTagRoutes()
     }
 }

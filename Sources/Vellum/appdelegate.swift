@@ -1,7 +1,9 @@
+// appdelegate.swift
+
 import Cocoa
 import HotKey
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var panel: NSPanel?
     var hotKey: HotKey?
     var statusItem: NSStatusItem?
@@ -9,7 +11,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var recentCapturesWindowController: RecentCapturesWindowController?
     var digestWindowController: DigestWindowController?
 
+    private let recentCapturesSubmenu = NSMenu()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+
+        NSSetUncaughtExceptionHandler { exception in
+            VellumLog.fault(
+                "Uncaught exception: \(exception.name.rawValue) — \(exception.reason ?? "no reason")\n"
+                + exception.callStackSymbols.joined(separator: "\n")
+            )
+        }
+
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        VellumLog.info("Vellum launched (version \(version))")
+        VellumLog.info("Storage folder: \(PreferencesManager.shared.storageFolder.path)")
+
         registerHotKey()
         setupStatusItem()
 
@@ -21,6 +37,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        VellumLog.info("Vellum quitting")
+    }
+
     @objc private func hotKeyPreferencesChanged() {
         registerHotKey()
     }
@@ -28,12 +48,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func registerHotKey() {
         let code = PreferencesManager.shared.hotKeyCode
         let modifiers = PreferencesManager.shared.hotKeyModifiers
-        guard let key = Key(carbonKeyCode: UInt32(code)) else { return }
+        guard let key = Key(carbonKeyCode: UInt32(code)) else {
+            VellumLog.error("Failed to register hotkey: unrecognized key code \(code)")
+            return
+        }
 
         hotKey = HotKey(key: key, modifiers: modifiers)
         hotKey?.keyDownHandler = { [weak self] in
             self?.togglePanel()
         }
+
+        VellumLog.info("Hotkey registered (key code \(code))")
     }
 
     func setupStatusItem() {
@@ -52,16 +77,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let recentItem = NSMenuItem(title: "Recent Captures…", action: #selector(openRecentCaptures), keyEquivalent: "")
+        let recentItem = NSMenuItem(title: "Recent Captures", action: nil, keyEquivalent: "")
+        recentCapturesSubmenu.delegate = self
+        recentItem.submenu = recentCapturesSubmenu
+
         let digestItem = NSMenuItem(title: "Weekly Digest…", action: #selector(openWeeklyDigest), keyEquivalent: "")
         let notesItem = NSMenuItem(title: "Open Notes", action: #selector(openNotesFile), keyEquivalent: "")
+        let hintItem = NSMenuItem(title: "Quick Tips", action: #selector(showQuickTips), keyEquivalent: "")
         let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
         let creditsItem = NSMenuItem(title: "Credits", action: #selector(showCredits), keyEquivalent: "")
         let quitItem = NSMenuItem(title: "Quit Vellum", action: #selector(quitApp), keyEquivalent: "q")
 
-        recentItem.target = self
         digestItem.target = self
         notesItem.target = self
+        hintItem.target = self
         prefsItem.target = self
         creditsItem.target = self
         quitItem.target = self
@@ -69,6 +98,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(recentItem)
         menu.addItem(digestItem)
         menu.addItem(notesItem)
+        menu.addItem(hintItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(prefsItem)
         menu.addItem(creditsItem)
@@ -78,12 +108,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
-    @objc func openRecentCaptures() {
+    /// Rebuilds the Recent Captures submenu right before it's shown, so
+    /// files that have only just started being written to (a tag used
+    /// for the first time, say) show up without needing a relaunch.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === recentCapturesSubmenu else {
+            return
+        }
+
+        menu.removeAllItems()
+
+        let allItem = NSMenuItem(title: "All Notes", action: #selector(selectRecentCaptures(_:)), keyEquivalent: "")
+        allItem.target = self
+        allItem.representedObject = CaptureFileSelection.all
+        menu.addItem(allItem)
+
+        menu.addItem(.separator())
+
+        let files = CaptureFileCatalog.availableFiles()
+
+        if files.isEmpty {
+            let emptyItem = NSMenuItem(title: "No captures yet", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+        } else {
+            for filename in files {
+                let item = NSMenuItem(title: filename, action: #selector(selectRecentCaptures(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = CaptureFileSelection.file(filename)
+                menu.addItem(item)
+            }
+        }
+    }
+
+    @objc func selectRecentCaptures(_ sender: NSMenuItem) {
+        guard let selection = sender.representedObject as? CaptureFileSelection else {
+            return
+        }
+
         if recentCapturesWindowController == nil {
             recentCapturesWindowController = RecentCapturesWindowController()
         }
 
-        recentCapturesWindowController?.loadEntries()
+        recentCapturesWindowController?.loadEntries(for: selection)
         recentCapturesWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -110,6 +177,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         preferencesWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func showQuickTips() {
+        showPanel()
+        (panel as? CapturePanel)?.showFirstRunHint()
     }
 
     @objc func showCredits() {
@@ -189,6 +261,7 @@ ko-fi.com/fishtanktech
 
         (panel as? CapturePanel)?.centerOnActiveScreen()
         (panel as? CapturePanel)?.beginNewCapture()
+        (panel as? CapturePanel)?.showFirstRunHintIfNeeded()
         (panel as? CapturePanel)?.animateIn()
 
         NSApp.activate(ignoringOtherApps: true)

@@ -1,3 +1,5 @@
+// CapturePanel.swift
+
 import Cocoa
 
 
@@ -63,14 +65,21 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     private let scrollView = NSScrollView()
     private let visualEffectView = NSVisualEffectView()
 
+
+
     private let savedLabel = NSTextField(labelWithString: "Saved")
     private let countLabel = NSTextField(labelWithString: "")
+    private let mathPreviewLabel = NSTextField(labelWithString: "")
+    private let firstRunHintLabel = NSTextField(labelWithString: "")
+    private let routingLabel = NSTextField(labelWithString: "")
 
     private let storage: NotesStorage
     private let mode: CaptureMode
 
     private var writeTimer: Timer?
     private var savedLabelHideTimer: Timer?
+    private var mathPreviewTimer: Timer?
+    private var firstRunHintHideTimer: Timer?
 
     var onRequestDismiss: (() -> Void)?
 
@@ -119,6 +128,9 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
         setupTextView(contentRect: contentRect)
         setupSavedLabel()
         setupCountLabel()
+        setupMathPreviewLabel()
+        setupFirstRunHintLabel()
+        setupRoutingLabel()
 
         centerOnActiveScreen()
 
@@ -269,6 +281,182 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     }
 
 
+    private func setupMathPreviewLabel() {
+
+        mathPreviewLabel.font = NSFont.monospacedDigitSystemFont(
+            ofSize: 14,
+            weight: .medium
+        )
+
+        mathPreviewLabel.textColor = .secondaryLabelColor
+        mathPreviewLabel.isEditable = false
+        mathPreviewLabel.isSelectable = false
+        mathPreviewLabel.isBezeled = false
+        mathPreviewLabel.drawsBackground = false
+        mathPreviewLabel.isHidden = true
+        mathPreviewLabel.lineBreakMode = .byClipping
+
+        // Added directly to the text view so its frame lives in the same
+        // (flipped) coordinate space as glyph geometry from the layout
+        // manager, and so it scrolls naturally with the text.
+        textView.addSubview(mathPreviewLabel)
+    }
+
+
+    // MARK: - First Run Hint
+
+    private func setupFirstRunHintLabel() {
+
+        firstRunHintLabel.font = NSFont.systemFont(
+            ofSize: 11,
+            weight: .medium
+        )
+
+        firstRunHintLabel.textColor = .secondaryLabelColor
+        firstRunHintLabel.alignment = .center
+        firstRunHintLabel.alphaValue = 0
+        firstRunHintLabel.isEditable = false
+        firstRunHintLabel.isBezeled = false
+        firstRunHintLabel.drawsBackground = false
+
+        firstRunHintLabel.maximumNumberOfLines = 3
+        firstRunHintLabel.stringValue =
+            "⌥⌘N to open\nEsc to dismiss\nYour text saves automatically."
+
+        firstRunHintLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        visualEffectView.addSubview(firstRunHintLabel)
+
+
+        NSLayoutConstraint.activate([
+            firstRunHintLabel.centerXAnchor.constraint(
+                equalTo: visualEffectView.centerXAnchor
+            ),
+
+            firstRunHintLabel.centerYAnchor.constraint(
+                equalTo: visualEffectView.centerYAnchor
+            )
+        ])
+    }
+
+
+    /// Shows the onboarding hint automatically, only if it hasn't been
+    /// seen before. Called from showPanel() on every open — no-op after
+    /// the first time.
+    func showFirstRunHintIfNeeded() {
+
+        guard !PreferencesManager.shared.hasShownFirstRunHint else {
+            return
+        }
+
+        PreferencesManager.shared.hasShownFirstRunHint = true
+
+        animateFirstRunHint()
+    }
+
+
+    /// Shows the onboarding hint on demand, regardless of whether it's
+    /// been seen before. Used by the "Quick Tips" menu bar item.
+    func showFirstRunHint() {
+        animateFirstRunHint()
+    }
+
+
+    private func animateFirstRunHint() {
+
+        NSAnimationContext.runAnimationGroup { context in
+
+            context.duration = 0.3
+
+            firstRunHintLabel.animator().alphaValue = 1
+        }
+
+
+        firstRunHintHideTimer?.invalidate()
+
+
+        firstRunHintHideTimer =
+        Timer.scheduledTimer(
+            withTimeInterval: 4.0,
+            repeats: false
+        ) { [weak self] _ in
+
+            NSAnimationContext.runAnimationGroup { context in
+
+                context.duration = 0.5
+
+                self?.firstRunHintLabel.animator().alphaValue = 0
+            }
+        }
+    }
+
+
+    // MARK: - Routing Feedback
+
+    private func setupRoutingLabel() {
+
+        routingLabel.font = NSFont.systemFont(
+            ofSize: 10,
+            weight: .medium
+        )
+
+        routingLabel.textColor = .secondaryLabelColor
+        routingLabel.alignment = .right
+        routingLabel.isEditable = false
+        routingLabel.isBezeled = false
+        routingLabel.drawsBackground = false
+        routingLabel.isHidden = true
+
+        routingLabel.maximumNumberOfLines = 2
+        routingLabel.lineBreakMode = .byWordWrapping
+
+        routingLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        visualEffectView.addSubview(routingLabel)
+
+
+        NSLayoutConstraint.activate([
+            routingLabel.topAnchor.constraint(
+                equalTo: visualEffectView.topAnchor,
+                constant: 8
+            ),
+
+            routingLabel.trailingAnchor.constraint(
+                equalTo: visualEffectView.trailingAnchor,
+                constant: -12
+            ),
+
+            routingLabel.widthAnchor.constraint(
+                lessThanOrEqualToConstant: 200
+            )
+        ])
+    }
+
+
+    /// Updates the "→ Destination.md" indicator to reflect the tag (if
+    /// any) currently at the start of the text. Never silently ignores
+    /// an unrecognized tag — it always routes to notes.md and flags it
+    /// explicitly, mirroring exactly what NotesStorage will do on save.
+    private func updateRoutingFeedback() {
+
+        guard mode == .permanent,
+              let preview = storage.routingPreview(for: textView.string) else {
+            routingLabel.isHidden = true
+            return
+        }
+
+        if preview.isRecognized {
+            routingLabel.textColor = .secondaryLabelColor
+            routingLabel.stringValue = "→ \(preview.destinationFilename)"
+        } else {
+            routingLabel.textColor = .systemOrange
+            routingLabel.stringValue = "→ \(preview.destinationFilename)\nUnknown tag"
+        }
+
+        routingLabel.isHidden = false
+    }
+
+
     func centerOnActiveScreen() {
 
         guard let screen = NSScreen.main else {
@@ -304,6 +492,10 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
         savedLabel.alphaValue = 0
 
         updateCountLabel()
+        updateRoutingFeedback()
+
+        mathPreviewTimer?.invalidate()
+        mathPreviewLabel.isHidden = true
 
 
         if isContinuing {
@@ -315,6 +507,7 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     func flushCurrentText() {
 
         writeTimer?.invalidate()
+        mathPreviewTimer?.invalidate()
 
         storage.updateSession(
             text: textView.string
@@ -416,6 +609,7 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
 
         updateCountLabel()
+        updateRoutingFeedback()
 
         writeTimer?.invalidate()
 
@@ -439,6 +633,119 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
 
             self.showSavedIndicator()
         }
+
+        scheduleMathPreview()
+    }
+
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        scheduleMathPreview()
+    }
+
+
+    // MARK: - Inline Math
+
+    /// Hides any stale result immediately (so we never show a result for
+    /// text that no longer matches it) and, after a short pause with no
+    /// further typing or cursor movement, evaluates the current line.
+    private func scheduleMathPreview() {
+
+        mathPreviewLabel.isHidden = true
+        mathPreviewTimer?.invalidate()
+
+        guard PreferencesManager.shared.inlineMathEnabled else {
+            return
+        }
+
+        mathPreviewTimer = Timer.scheduledTimer(
+            withTimeInterval: PreferencesManager.shared.mathPreviewDelay,
+            repeats: false
+        ) { [weak self] _ in
+            self?.updateMathPreview()
+        }
+    }
+
+
+    private func updateMathPreview() {
+
+        guard PreferencesManager.shared.inlineMathEnabled else {
+            mathPreviewLabel.isHidden = true
+            return
+        }
+
+        let nsText = textView.string as NSString
+        let caret = textView.selectedRange().location
+
+        guard caret <= nsText.length else {
+            mathPreviewLabel.isHidden = true
+            return
+        }
+
+        let lineRange = nsText.lineRange(
+            for: NSRange(location: caret, length: 0)
+        )
+
+        let line = nsText.substring(with: lineRange)
+            .trimmingCharacters(in: .newlines)
+
+        guard let result = MathExpressionEvaluator.evaluate(line) else {
+            mathPreviewLabel.isHidden = true
+            return
+        }
+
+        mathPreviewLabel.stringValue = "= \(result.formatted)"
+        mathPreviewLabel.sizeToFit()
+
+        positionMathPreview(forLineRange: lineRange)
+
+        mathPreviewLabel.isHidden = false
+    }
+
+
+    private func positionMathPreview(forLineRange lineRange: NSRange) {
+
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return
+        }
+
+        var measureRange = lineRange
+        let nsText = textView.string as NSString
+
+        if measureRange.length > 0 {
+            let lastCharRange = NSRange(
+                location: measureRange.location + measureRange.length - 1,
+                length: 1
+            )
+
+            if nsText.substring(with: lastCharRange) == "\n" {
+                measureRange.length -= 1
+            }
+        }
+
+        guard measureRange.length > 0 else {
+            return
+        }
+
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: measureRange,
+            actualCharacterRange: nil
+        )
+
+        let lineRect = layoutManager.boundingRect(
+            forGlyphRange: glyphRange,
+            in: textContainer
+        )
+
+        let origin = textView.textContainerOrigin
+        let labelSize = mathPreviewLabel.frame.size
+
+        mathPreviewLabel.frame = NSRect(
+            x: origin.x + lineRect.maxX + 10,
+            y: origin.y + lineRect.minY + (lineRect.height - labelSize.height) / 2,
+            width: labelSize.width,
+            height: labelSize.height
+        )
     }
 
 
@@ -468,6 +775,18 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
         ) { [weak self] _ in
 
             self?.savedLabel.animator().alphaValue = 0
+        }
+
+
+        if PreferencesManager.shared.saveSoundEnabled {
+            NSSound(named: "Tink")?.play()
+        }
+
+        if PreferencesManager.shared.saveHapticEnabled {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                .generic,
+                performanceTime: .default
+            )
         }
     }
 

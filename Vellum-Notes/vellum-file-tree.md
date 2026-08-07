@@ -1,7 +1,7 @@
 # App-Vellum - File Tree
 
 ```
-pp-Vellum/
+App-Vellum/
 ├── .gitignore
 ├── .vscode/
 │   ├── launch.json

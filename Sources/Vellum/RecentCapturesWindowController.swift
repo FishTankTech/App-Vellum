@@ -1,14 +1,30 @@
+// RecentCapturesWindowController.swift
+
 import Cocoa
+
+enum CaptureFileSelection: Equatable {
+    case all
+    case file(String)
+
+    var displayName: String {
+        switch self {
+        case .all: return "All Notes"
+        case .file(let name): return name
+        }
+    }
+}
 
 struct CaptureEntry {
     let timestamp: String
     let preview: String
+    let sourceFilename: String
 }
 
 class RecentCapturesWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private var entries: [CaptureEntry] = []
+    private var currentSelection: CaptureFileSelection = .file("notes.md")
 
     convenience init() {
         let window = NSWindow(
@@ -35,7 +51,7 @@ class RecentCapturesWindowController: NSWindowController, NSTableViewDataSource,
         tableView.delegate = self
         tableView.rowHeight = 44
         tableView.target = self
-        tableView.doubleAction = #selector(openNotesFile)
+        tableView.doubleAction = #selector(openSelectedEntry)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -50,33 +66,62 @@ class RecentCapturesWindowController: NSWindowController, NSTableViewDataSource,
         ])
     }
 
-    func loadEntries() {
-        let fileURL = PreferencesManager.shared.storageFolder.appendingPathComponent("notes.md")
-        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            entries = []
-            tableView.reloadData()
-            return
+    /// Loads captures for the given selection — either a single file, or
+    /// "All Notes", which merges every known capture file chronologically.
+    func loadEntries(for selection: CaptureFileSelection) {
+        currentSelection = selection
+        window?.title = "Recent Captures — \(selection.displayName)"
+
+        switch selection {
+        case .file(let filename):
+            entries = loadCaptures(from: filename)
+                .map {
+                    CaptureEntry(
+                        timestamp: $0.timestampString,
+                        preview: String($0.body.prefix(80)),
+                        sourceFilename: filename
+                    )
+                }
+                .reversed()
+
+        case .all:
+            var merged: [(capture: ParsedCapture, source: String)] = []
+
+            for filename in CaptureFileCatalog.availableFiles() {
+                merged += loadCaptures(from: filename).map { ($0, filename) }
+            }
+
+            merged.sort { $0.capture.date > $1.capture.date }
+
+            entries = merged.map {
+                CaptureEntry(
+                    timestamp: $0.capture.timestampString,
+                    preview: String($0.capture.body.prefix(80)),
+                    sourceFilename: $0.source
+                )
+            }
         }
 
-        let sessions = content.components(separatedBy: "\n\n## ")
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-        var parsed: [CaptureEntry] = []
-        for session in sessions {
-            let lines = session.components(separatedBy: "\n")
-            guard let timestampLine = lines.first else { continue }
-            let body = lines.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !body.isEmpty else { continue }
-            let preview = String(body.prefix(80))
-            parsed.append(CaptureEntry(timestamp: timestampLine.trimmingCharacters(in: .whitespaces), preview: preview))
-        }
-
-        entries = parsed.reversed() // most recent first
         tableView.reloadData()
     }
 
-    @objc private func openNotesFile() {
-        let fileURL = PreferencesManager.shared.storageFolder.appendingPathComponent("notes.md")
+    private func loadCaptures(from filename: String) -> [ParsedCapture] {
+        let fileURL = PreferencesManager.shared.storageFolder.appendingPathComponent(filename)
+        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            return []
+        }
+        return NotesParser.parseCaptures(from: content)
+    }
+
+    @objc private func openSelectedEntry() {
+        let row = tableView.clickedRow
+        guard row >= 0, row < entries.count else {
+            return
+        }
+
+        let fileURL = PreferencesManager.shared.storageFolder
+            .appendingPathComponent(entries[row].sourceFilename)
+
         NSWorkspace.shared.open(fileURL)
     }
 
@@ -107,12 +152,27 @@ class RecentCapturesWindowController: NSWindowController, NSTableViewDataSource,
             previewLabel.tag = 2
             previewLabel.translatesAutoresizingMaskIntoConstraints = false
 
+            let sourceLabel = NSTextField(labelWithString: "")
+            sourceLabel.font = NSFont.systemFont(ofSize: 10)
+            sourceLabel.textColor = .tertiaryLabelColor
+            sourceLabel.alignment = .right
+            sourceLabel.lineBreakMode = .byTruncatingHead
+            sourceLabel.tag = 3
+            sourceLabel.translatesAutoresizingMaskIntoConstraints = false
+
             cellView.addSubview(timestampLabel)
             cellView.addSubview(previewLabel)
+            cellView.addSubview(sourceLabel)
 
             NSLayoutConstraint.activate([
                 timestampLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),
                 timestampLabel.topAnchor.constraint(equalTo: cellView.topAnchor, constant: 4),
+
+                sourceLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
+                sourceLabel.centerYAnchor.constraint(equalTo: timestampLabel.centerYAnchor),
+                sourceLabel.leadingAnchor.constraint(greaterThanOrEqualTo: timestampLabel.trailingAnchor, constant: 8),
+                sourceLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 140),
+
                 previewLabel.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),
                 previewLabel.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8),
                 previewLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: 2)
@@ -121,6 +181,14 @@ class RecentCapturesWindowController: NSWindowController, NSTableViewDataSource,
 
         (cellView.viewWithTag(1) as? NSTextField)?.stringValue = entry.timestamp
         (cellView.viewWithTag(2) as? NSTextField)?.stringValue = entry.preview
+
+        let sourceLabel = cellView.viewWithTag(3) as? NSTextField
+        if case .all = currentSelection {
+            sourceLabel?.stringValue = entry.sourceFilename
+            sourceLabel?.isHidden = false
+        } else {
+            sourceLabel?.isHidden = true
+        }
 
         return cellView
     }
