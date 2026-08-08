@@ -5,11 +5,14 @@ import HotKey
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var panel: NSPanel?
+    var scratchPanel: NSPanel?
     var hotKey: HotKey?
+    var scratchHotKey: HotKey?
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
     var recentCapturesWindowController: RecentCapturesWindowController?
     var digestWindowController: DigestWindowController?
+    var quickTipsWindowController: QuickTipsWindowController?
 
     private let recentCapturesSubmenu = NSMenu()
 
@@ -27,12 +30,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         VellumLog.info("Storage folder: \(PreferencesManager.shared.storageFolder.path)")
 
         registerHotKey()
+        registerScratchHotKey()
         setupStatusItem()
 
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(hotKeyPreferencesChanged),
             name: PreferencesManager.hotKeyChangedNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scratchHotKeyPreferencesChanged),
+            name: PreferencesManager.scratchHotKeyChangedNotification,
             object: nil
         )
     }
@@ -43,6 +54,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func hotKeyPreferencesChanged() {
         registerHotKey()
+    }
+
+    @objc private func scratchHotKeyPreferencesChanged() {
+        registerScratchHotKey()
     }
 
     func registerHotKey() {
@@ -59,6 +74,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         VellumLog.info("Hotkey registered (key code \(code))")
+    }
+
+    func registerScratchHotKey() {
+        let code = PreferencesManager.shared.scratchHotKeyCode
+        let modifiers = PreferencesManager.shared.scratchHotKeyModifiers
+        guard let key = Key(carbonKeyCode: UInt32(code)) else {
+            VellumLog.error("Failed to register scratch hotkey: unrecognized key code \(code)")
+            return
+        }
+
+        scratchHotKey = HotKey(key: key, modifiers: modifiers)
+        scratchHotKey?.keyDownHandler = { [weak self] in
+            self?.toggleScratchPanel()
+        }
+
+        VellumLog.info("Scratch hotkey registered (key code \(code))")
     }
 
     func setupStatusItem() {
@@ -84,7 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let digestItem = NSMenuItem(title: "Weekly Digest…", action: #selector(openWeeklyDigest), keyEquivalent: "")
         let notesItem = NSMenuItem(title: "Open Notes", action: #selector(openNotesFile), keyEquivalent: "")
         let hintItem = NSMenuItem(title: "Quick Tips", action: #selector(showQuickTips), keyEquivalent: "")
-        let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
+        let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: "")
         let creditsItem = NSMenuItem(title: "Credits", action: #selector(showCredits), keyEquivalent: "")
         let quitItem = NSMenuItem(title: "Quit Vellum", action: #selector(quitApp), keyEquivalent: "q")
 
@@ -180,8 +211,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func showQuickTips() {
-        showPanel()
-        (panel as? CapturePanel)?.showFirstRunHint()
+        // Rebuilt every time (not cached) so a hotkey rebind in
+        // Preferences is always reflected correctly.
+        quickTipsWindowController = QuickTipsWindowController()
+        quickTipsWindowController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc func showCredits() {
@@ -252,7 +286,7 @@ ko-fi.com/fishtanktech
 
     func showPanel() {
         if panel == nil {
-            panel = CapturePanel()
+            panel = CapturePanel(mode: .permanent)
 
             (panel as? CapturePanel)?.onRequestDismiss = { [weak self] in
                 self?.togglePanel()
@@ -267,5 +301,32 @@ ko-fi.com/fishtanktech
         NSApp.activate(ignoringOtherApps: true)
 
         (panel as? CapturePanel)?.focusTextView()
+    }
+
+    func toggleScratchPanel() {
+        if let scratchPanel = scratchPanel, scratchPanel.isVisible {
+            (scratchPanel as? CapturePanel)?.flushCurrentText()
+            (scratchPanel as? CapturePanel)?.animateOut {}
+        } else {
+            showScratchPanel()
+        }
+    }
+
+    func showScratchPanel() {
+        if scratchPanel == nil {
+            scratchPanel = CapturePanel(mode: .scratch)
+
+            (scratchPanel as? CapturePanel)?.onRequestDismiss = { [weak self] in
+                self?.toggleScratchPanel()
+            }
+        }
+
+        (scratchPanel as? CapturePanel)?.centerOnActiveScreen()
+        (scratchPanel as? CapturePanel)?.beginNewCapture()
+        (scratchPanel as? CapturePanel)?.animateIn()
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        (scratchPanel as? CapturePanel)?.focusTextView()
     }
 }

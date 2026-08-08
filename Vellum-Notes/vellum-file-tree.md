@@ -24,6 +24,7 @@ app-vellum/
 │       ├── NotesStorage.swift
 │       ├── PreferencesManager.swift
 │       ├── PreferencesWindowController.swift
+        ├── QuickTipsWindowController.swift
 │       ├── RecentCapturesWindowController.swift
 │       ├── Resources/
 │       │   └── menubar-icon.png

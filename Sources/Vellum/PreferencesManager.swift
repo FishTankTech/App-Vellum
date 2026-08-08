@@ -8,6 +8,8 @@ class PreferencesManager {
     private let defaults = UserDefaults.standard
     private let keyCodeKey = "hotKeyCode"
     private let modifiersKey = "hotKeyModifiersRaw"
+    private let scratchKeyCodeKey = "scratchHotKeyCode"
+    private let scratchModifiersKey = "scratchHotKeyModifiersRaw"
     private let storagePathKey = "storagePath"
     private let inlineMathEnabledKey = "inlineMathEnabled"
     private let mathPreviewDelayKey = "mathPreviewDelay"
@@ -34,6 +36,26 @@ class PreferencesManager {
             return NSEvent.ModifierFlags(rawValue: raw)
         }
         set { defaults.set(newValue.rawValue, forKey: modifiersKey) }
+    }
+
+    /// Key code for the scratch-capture hotkey. Defaults to the same "N"
+    /// key as the primary hotkey — the modifier set is what
+    /// distinguishes them (⇧⌥⌘N vs ⌥⌘N by default).
+    var scratchHotKeyCode: UInt16 {
+        get {
+            let stored = defaults.object(forKey: scratchKeyCodeKey) as? Int
+            return UInt16(stored ?? 45) // 45 = "N"
+        }
+        set { defaults.set(Int(newValue), forKey: scratchKeyCodeKey) }
+    }
+
+    var scratchHotKeyModifiers: NSEvent.ModifierFlags {
+        get {
+            let stored = defaults.object(forKey: scratchModifiersKey) as? UInt
+            let raw = stored ?? NSEvent.ModifierFlags([.command, .option, .shift]).rawValue
+            return NSEvent.ModifierFlags(rawValue: raw)
+        }
+        set { defaults.set(newValue.rawValue, forKey: scratchModifiersKey) }
     }
 
     var storageFolder: URL {
@@ -70,27 +92,27 @@ class PreferencesManager {
     /// terminating whitespace) to a destination filename within
     /// `storageFolder`. Editable via the Tag Routing table in
     /// Preferences.
-var tagRoutes: [String: String] {
-    get {
-        guard let data = defaults.data(forKey: tagRoutesKey) else {
-            return Self.defaultTagRoutes
+    var tagRoutes: [String: String] {
+        get {
+            guard let data = defaults.data(forKey: tagRoutesKey) else {
+                return Self.defaultTagRoutes
+            }
+            do {
+                return try JSONDecoder().decode([String: String].self, from: data)
+            } catch {
+                VellumLog.error("Failed to load tag routes, using defaults: \(error.localizedDescription)")
+                return Self.defaultTagRoutes
+            }
         }
-        do {
-            return try JSONDecoder().decode([String: String].self, from: data)
-        } catch {
-            VellumLog.error("Failed to load tag routes, using defaults: \(error.localizedDescription)")
-            return Self.defaultTagRoutes
+        set {
+            do {
+                let encoded = try JSONEncoder().encode(newValue)
+                defaults.set(encoded, forKey: tagRoutesKey)
+            } catch {
+                VellumLog.error("Failed to save tag routes: \(error.localizedDescription)")
+            }
         }
     }
-    set {
-        do {
-            let encoded = try JSONEncoder().encode(newValue)
-            defaults.set(encoded, forKey: tagRoutesKey)
-        } catch {
-            VellumLog.error("Failed to save tag routes: \(error.localizedDescription)")
-        }
-    }
-}
 
     static let defaultTagRoutes: [String: String] = [
         "am": "ActivismMotorsports.md",
@@ -122,4 +144,5 @@ var tagRoutes: [String: String] {
     }
 
     static let hotKeyChangedNotification = Notification.Name("VellumHotKeyChanged")
+    static let scratchHotKeyChangedNotification = Notification.Name("VellumScratchHotKeyChanged")
 }

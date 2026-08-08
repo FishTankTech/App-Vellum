@@ -2,7 +2,7 @@
 
 import Cocoa
 
-private enum KeyCodeMap {
+enum KeyCodeMap {
     private static let names: [UInt16: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
         11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T",
@@ -16,11 +16,53 @@ private enum KeyCodeMap {
     }
 }
 
+/// Which stored hotkey a HotKeyRecorderControl reads from and writes to.
+enum HotKeyKind {
+    case primary
+    case scratch
+
+    var keyCode: UInt16 {
+        get {
+            switch self {
+            case .primary: return PreferencesManager.shared.hotKeyCode
+            case .scratch: return PreferencesManager.shared.scratchHotKeyCode
+            }
+        }
+    }
+
+    var modifiers: NSEvent.ModifierFlags {
+        switch self {
+        case .primary: return PreferencesManager.shared.hotKeyModifiers
+        case .scratch: return PreferencesManager.shared.scratchHotKeyModifiers
+        }
+    }
+
+    func save(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
+        switch self {
+        case .primary:
+            PreferencesManager.shared.hotKeyCode = keyCode
+            PreferencesManager.shared.hotKeyModifiers = modifiers
+        case .scratch:
+            PreferencesManager.shared.scratchHotKeyCode = keyCode
+            PreferencesManager.shared.scratchHotKeyModifiers = modifiers
+        }
+    }
+
+    var changedNotification: Notification.Name {
+        switch self {
+        case .primary: return PreferencesManager.hotKeyChangedNotification
+        case .scratch: return PreferencesManager.scratchHotKeyChangedNotification
+        }
+    }
+}
+
 class HotKeyRecorderControl: NSButton {
     private var isRecording = false
     private var monitor: Any?
+    private let kind: HotKeyKind
 
-    init() {
+    init(kind: HotKeyKind = .primary) {
+        self.kind = kind
         super.init(frame: .zero)
         bezelStyle = .rounded
         target = self
@@ -29,6 +71,7 @@ class HotKeyRecorderControl: NSButton {
     }
 
     required init?(coder: NSCoder) {
+        self.kind = .primary
         super.init(coder: coder)
     }
 
@@ -36,8 +79,8 @@ class HotKeyRecorderControl: NSButton {
         if isRecording {
             title = "Press a key combination…"
         } else {
-            let mods = PreferencesManager.shared.hotKeyModifiers
-            let code = PreferencesManager.shared.hotKeyCode
+            let mods = kind.modifiers
+            let code = kind.keyCode
             var parts = ""
             if mods.contains(.control) { parts += "⌃" }
             if mods.contains(.option) { parts += "⌥" }
@@ -64,10 +107,9 @@ class HotKeyRecorderControl: NSButton {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
             }
-            PreferencesManager.shared.hotKeyCode = event.keyCode
-            PreferencesManager.shared.hotKeyModifiers = modifiers
+            self.kind.save(keyCode: event.keyCode, modifiers: modifiers)
             self.refreshTitle()
-            NotificationCenter.default.post(name: PreferencesManager.hotKeyChangedNotification, object: nil)
+            NotificationCenter.default.post(name: self.kind.changedNotification, object: nil)
             return nil
         }
     }
@@ -80,7 +122,8 @@ private struct TagRouteEntry {
 }
 
 class PreferencesWindowController: NSWindowController {
-    private let hotKeyRecorder = HotKeyRecorderControl()
+    private let hotKeyRecorder = HotKeyRecorderControl(kind: .primary)
+    private let scratchHotKeyRecorder = HotKeyRecorderControl(kind: .scratch)
     private let storagePathLabel = NSTextField(labelWithString: "")
 
     private let inlineMathCheckbox = NSButton(checkboxWithTitle: "Show inline math results", target: nil, action: nil)
@@ -96,7 +139,7 @@ class PreferencesWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -111,6 +154,7 @@ class PreferencesWindowController: NSWindowController {
         guard let contentView = window?.contentView else { return }
 
         let hotKeyLabel = NSTextField(labelWithString: "Global Hotkey:")
+        let scratchHotKeyLabel = NSTextField(labelWithString: "Scratch Hotkey:")
         let storageLabel = NSTextField(labelWithString: "Notes Folder:")
         let chooseFolderButton = NSButton(title: "Choose…", target: self, action: #selector(chooseFolder))
 
@@ -121,6 +165,10 @@ class PreferencesWindowController: NSWindowController {
         let hotKeyStack = NSStackView(views: [hotKeyLabel, hotKeyRecorder])
         hotKeyStack.orientation = .horizontal
         hotKeyStack.spacing = 8
+
+        let scratchHotKeyStack = NSStackView(views: [scratchHotKeyLabel, scratchHotKeyRecorder])
+        scratchHotKeyStack.orientation = .horizontal
+        scratchHotKeyStack.spacing = 8
 
         let storageStack = NSStackView(views: [storageLabel, storagePathLabel, chooseFolderButton])
         storageStack.orientation = .horizontal
@@ -156,6 +204,7 @@ class PreferencesWindowController: NSWindowController {
 
         let mainStack = NSStackView(views: [
             hotKeyStack,
+            scratchHotKeyStack,
             storageStack,
             mathStack,
             setupTagRoutesSection(),
