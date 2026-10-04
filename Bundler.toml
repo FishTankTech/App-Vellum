@@ -1,6 +1,6 @@
 [apps.Vellum]
 product = "Vellum"
-version = "0.1.0"
+version = "2.2.1"
 category = "public.app-category.productivity"
 icon = "Resources/Vellum.icns"
 minimum_macos_version = "13.0"

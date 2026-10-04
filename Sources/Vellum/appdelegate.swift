@@ -267,7 +267,7 @@ ko-fi.com/fishtanktech
     NSApp.orderFrontStandardAboutPanel(options: [
         .credits: credits,
         NSApplication.AboutPanelOptionKey(rawValue: "ApplicationName"): "Vellum",
-        NSApplication.AboutPanelOptionKey(rawValue: "ApplicationVersion"): "1.4.0 (Public)"
+        NSApplication.AboutPanelOptionKey(rawValue: "ApplicationVersion"): "2.0.1 (S-L)"
     ])
 }
 
