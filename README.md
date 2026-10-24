@@ -8,7 +8,7 @@ Vellum is a lightweight (macOS) quick-note capture utility. A global hotkey open
 
 ## Status
 
-**Work-in-progress.** Current release @ V2.2.1 (STABLE)
+**Work-in-progress.** Current release @ V3.0.0 (STABLE)
 
 ## What it does
 

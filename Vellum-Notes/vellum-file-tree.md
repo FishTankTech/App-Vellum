@@ -1,19 +1,20 @@
 # App-Vellum - File Tree
 
 ```
-app-vellum/
+App-Vellum/
 ├── .gitignore
 ├── .vscode/
 │   ├── launch.json
 │   └── tasks.json
-|
 ├── Bundler.toml
+├── Icon
 ├── Icon
 ├── LICENSE
 ├── README.md
 ├── Resources/
-│   └── Vellum.icns
-|
+│   ├── Vellum.icns
+│   ├── Vellum.png
+│   └── dmg-background.tiff
 ├── Sources/
 │   └── Vellum/
 │       ├── CaptureMode.swift
@@ -24,18 +25,17 @@ app-vellum/
 │       ├── NotesStorage.swift
 │       ├── PreferencesManager.swift
 │       ├── PreferencesWindowController.swift
-        ├── QuickTipsWindowController.swift
+│       ├── QuickTipsWindowController.swift
 │       ├── RecentCapturesWindowController.swift
 │       ├── Resources/
 │       │   └── menubar-icon.png
 │       ├── VellumLogger.swift
 │       ├── appdelegate.swift
 │       └── main.swift
-|
 ├── Vellum-Notes/
 │   ├── vellum-file-tree.md
 │   └── vellum-roadmap.md
-|
+├── make_dmg_bg.py
 ├── mask_icon.py
 ├── package.swift
 ├── resource_bundle_accessor.d
