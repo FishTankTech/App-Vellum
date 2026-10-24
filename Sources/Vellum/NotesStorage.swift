@@ -105,20 +105,44 @@ class NotesStorage {
         }
     }
 
+    /// Ends the session and cancels the grace window, so the next
+    /// beginSession() starts a brand-new capture instead of continuing
+    /// this one. Used by the "/clear" command.
+    func finishSession() {
+     lastDismissDate = nil
+     lastSessionText = ""
+    }
+
     /// Pure preview of where `text` would currently be routed, with no
     /// side effects — safe to call on every keystroke. Returns nil when
-    /// there's no complete tag yet (plain text, or a tag still being
-    /// typed), in which case no routing feedback should be shown.
+    /// there's no tag to report on (plain text, or a partial tag that
+    /// doesn't match a known route yet).
     func routingPreview(for text: String) -> RoutingPreview? {
-        guard let (tag, _) = NoteTag.extract(from: text) else {
+        // Complete tag (followed by whitespace).
+        if let (tag, _) = NoteTag.extract(from: text) {
+            if let filename = PreferencesManager.shared.tagRoutes[tag] {
+                return RoutingPreview(destinationFilename: filename, isRecognized: true)
+            } else {
+                return RoutingPreview(destinationFilename: "notes.md", isRecognized: false)
+            }
+        }
+
+        // Tag still being typed: show the destination as soon as it
+        // exactly matches a known tag. Partial/unknown tags show nothing,
+        // so "//a" on the way to "//am" doesn't flash "Unknown tag".
+        guard text.hasPrefix("//") else {
             return nil
         }
 
-        if let filename = PreferencesManager.shared.tagRoutes[tag] {
-            return RoutingPreview(destinationFilename: filename, isRecognized: true)
-        } else {
-            return RoutingPreview(destinationFilename: "notes.md", isRecognized: false)
+        let partial = text.dropFirst(2).lowercased()
+
+        guard !partial.isEmpty,
+              !partial.contains(where: { $0.isWhitespace }),
+              let filename = PreferencesManager.shared.tagRoutes[partial] else {
+            return nil
         }
+
+        return RoutingPreview(destinationFilename: filename, isRecognized: true)
     }
 
     /// Returns the routed destination file and the text to actually save

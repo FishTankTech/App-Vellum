@@ -161,67 +161,61 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     }
 
 
-    private func setupTextView(contentRect: NSRect) {
+private func setupTextView(contentRect: NSRect) {
 
-        textView.frame = contentRect
-        textView.font = NSFont.systemFont(ofSize: 15)
+    // Height of the footer strip reserved for the count / saved labels.
+    let footerHeight: CGFloat = 26
 
-        textView.isRichText = false
-        textView.isEditable = true
-        textView.isSelectable = true
-        textView.drawsBackground = false
+    let scrollFrame = NSRect(
+        x: 0,
+        y: footerHeight,
+        width: contentRect.width,
+        height: contentRect.height - footerHeight
+    )
 
-        textView.textContainerInset = NSSize(
-            width: 14,
-            height: 14
-        )
+    textView.frame = scrollFrame
+    textView.font = NSFont.systemFont(ofSize: 15)
 
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = true
+    textView.isRichText = false
+    textView.isEditable = true
+    textView.isSelectable = true
+    textView.drawsBackground = false
 
-        textView.allowsUndo = true
-        textView.delegate = self
+    textView.textContainerInset = NSSize(width: 14, height: 14)
 
+    textView.isAutomaticQuoteSubstitutionEnabled = false
+    textView.isAutomaticDashSubstitutionEnabled = false
+    textView.isAutomaticSpellingCorrectionEnabled = true
 
-        scrollView.frame = contentRect
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
+    textView.allowsUndo = true
+    textView.delegate = self
 
-        scrollView.autoresizingMask = [
-            .width,
-            .height
-        ]
+    scrollView.frame = scrollFrame
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+    scrollView.autohidesScrollers = true
+    scrollView.drawsBackground = false
+    scrollView.borderType = .noBorder
+    scrollView.autoresizingMask = [.width, .height]
 
+    textView.minSize = NSSize(width: 0, height: scrollFrame.height)
+    textView.maxSize = NSSize(
+        width: CGFloat.greatestFiniteMagnitude,
+        height: CGFloat.greatestFiniteMagnitude
+    )
 
-        textView.minSize = NSSize(
-            width: 0,
-            height: contentRect.height
-        )
+    textView.isVerticallyResizable = true
+    textView.isHorizontallyResizable = false
 
-        textView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
+    textView.textContainer?.containerSize = NSSize(
+        width: scrollFrame.width,
+        height: CGFloat.greatestFiniteMagnitude
+    )
+    textView.textContainer?.widthTracksTextView = true
 
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-
-
-        textView.textContainer?.containerSize = NSSize(
-            width: contentRect.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-
-        textView.textContainer?.widthTracksTextView = true
-
-
-        scrollView.documentView = textView
-        visualEffectView.addSubview(scrollView)
-    }
+    scrollView.documentView = textView
+    visualEffectView.addSubview(scrollView)
+}
 
 
     private func setupSavedLabel() {
@@ -434,8 +428,8 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
 
 
     /// Updates the "→ Destination.md" indicator to reflect the tag (if
-    /// any) currently at the start of the text. Never silently ignores
-    /// an unrecognized tag — it always routes to notes.md and flags it
+    /// any) currently at the start of the text. 
+    /// IF TAG IS NOT FOUND - It always routes to notes.md and flags it
     /// explicitly, mirroring exactly what NotesStorage will do on save.
     private func updateRoutingFeedback() {
 
@@ -606,36 +600,41 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
     }
 
 
+
     func textDidChange(_ notification: Notification) {
 
-        updateCountLabel()
-        updateRoutingFeedback()
+    if handleClearCommandIfPresent() {
+        return
+    }
 
-        writeTimer?.invalidate()
+    updateCountLabel()
+    updateRoutingFeedback()
 
-        savedLabelHideTimer?.invalidate()
+    writeTimer?.invalidate()
 
-        savedLabel.animator().alphaValue = 0
+    savedLabelHideTimer?.invalidate()
+
+    savedLabel.animator().alphaValue = 0
 
 
-        writeTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.3,
-            repeats: false
-        ) { [weak self] _ in
+    writeTimer = Timer.scheduledTimer(
+        withTimeInterval: 0.3,
+        repeats: false
+    ) { [weak self] _ in
 
-            guard let self else {
-                return
-            }
-
-            self.storage.updateSession(
-                text: self.textView.string
-            )
-
-            self.showSavedIndicator()
+        guard let self else {
+            return
         }
 
-        scheduleMathPreview()
+        self.storage.updateSession(
+            text: self.textView.string
+        )
+
+        self.showSavedIndicator()
     }
+
+    scheduleMathPreview()
+}
 
 
     func textViewDidChangeSelection(_ notification: Notification) {
@@ -789,6 +788,55 @@ class CapturePanel: NSPanel, NSTextViewDelegate {
             )
         }
     }
+
+    // MARK: - /clear Command
+
+private static let clearCommand = "/clear"
+
+/// If the text now ends with "/clear" (at the start of the text or after
+/// whitespace), saves everything before it, closes this panel, and
+/// immediately opens a fresh blank capture. Returns true when it fired.
+private func handleClearCommandIfPresent() -> Bool {
+
+    guard mode == .permanent else {
+        return false
+    }
+
+    let text = textView.string
+
+    guard text.hasSuffix(Self.clearCommand) else {
+        return false
+    }
+
+    let beforeCommand = String(text.dropLast(Self.clearCommand.count))
+
+    // Don't fire on something like "foo/clear".
+    if let last = beforeCommand.last, !last.isWhitespace {
+        return false
+    }
+
+    // Drop the command and any whitespace left dangling before it.
+    var cleaned = beforeCommand
+    while let last = cleaned.last, last.isWhitespace {
+        cleaned.removeLast()
+    }
+
+    // Programmatic changes don't re-trigger textDidChange.
+    textView.string = cleaned
+
+    flushCurrentText()          // saves the cleaned text
+    storage.finishSession()     // cancels the grace window
+
+    animateOut { [weak self] in
+        guard let self else { return }
+        self.beginNewCapture()  // fresh session, blank text
+        self.centerOnActiveScreen()
+        self.animateIn()
+        self.focusTextView()
+    }
+
+    return true
+}
 
 
     private func showContinuingIndicator() {

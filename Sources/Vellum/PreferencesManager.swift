@@ -115,10 +115,8 @@ class PreferencesManager {
     }
 
     static let defaultTagRoutes: [String: String] = [
-        "am": "ActivismMotorsports.md",
-        "ap": "ActivismPhotography.md",
-        "ftt": "FishTankTech.md",
-        "br": "CremeanArchives.md"
+        "etc": "etc.md",
+        "test": "Testing.md",
     ]
 
     /// Whether the one-time onboarding hint has already been shown
