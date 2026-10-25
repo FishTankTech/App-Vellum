@@ -12,17 +12,35 @@ Vellum is a lightweight (macOS) quick-note capture utility. A global hotkey open
 
 ## What it does
 
-* Global hotkey opens a floating note window
-* Save notes instantly as you type with adjustable markers (via audio + haptics)
-* Can create instant "scratch paper" to use and never see again via a seperate programab hotkey.
-* Inline math processer (I.e. *"340 + 89 * 1.07"* will append *"340 + 89 * 1.07 *= 458.23"** after an adjustable pause.)
-* Automatic tag usage (I.e. ***"//AM"*** will divert said note into "ActivismMotorsports.md", etc...).
-* Quality (Changable) timeline digest with data about your usage.
-* Minimal UI, minimal overhead, and minimal size, in a Fast, lightweight, and native-like macOS interface.
+* **Global hotkey** opens a floating capture window (default `⌥⌘N`). `Esc` dismisses it.
+* **Instant autosave** as you type, with optional sound and trackpad haptic confirmation.
+* **Scratch paper** via a separate hotkey (default `⇧⌥⌘N`): a capture window that is never written to disk.
+* **Inline math:** type something like `340 + 89 * 1.07` and, after an adjustable pause, a live `= 458.23` preview appears beside it.
+* **Tag routing:** start a note with `//am` (or any tag you define) to send it to a matching file, e.g. `ActivismMotorsports.md`, instead of `notes.md`.
+* **Recent Captures** browser and a **Weekly Digest** with usage stats, exported as Markdown.
+* **Minimal UI, minimal overhead:** a native, menu bar-only macOS app with no Dock icon.
 
 ## Installation // Usage
 
-Coming soon.
+### Download
+
+Grab the latest `.dmg` from the [Releases](../../releases) tab, open it, and drag Vellum into your Applications folder.
+
+### Build from source (optional)
+
+Requires macOS 13+ and a Swift 5.9+ toolchain.
+
+```bash
+git clone https://github.com/<your-username>/App-Vellum.git
+cd App-Vellum
+swift build -c release
+```
+
+### Using it
+
+Vellum lives in your menu bar. Press `⌥⌘N` to capture, `⇧⌥⌘N` for scratch paper, and `Esc` to dismiss. Hotkeys, notes folder, inline math, and tag routes can all be changed in **Preferences…**, and **Quick Tips** shows your current shortcuts.
+
+Notes are saved as plain Markdown in `~/Vellum/` by default, with a timestamp heading per capture.
 
 ## License
 
